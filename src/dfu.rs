@@ -1,3 +1,6 @@
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_repr::*;
+
 use crate::slip::SlipEncoder;
 use crate::updater::Error;
 
@@ -15,7 +18,8 @@ pub enum DfuError {
     UnknownError,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Serialize_repr, Deserialize_repr, Copy, Clone)]
+#[repr(u8)]
 pub enum ObjectType {
     Command = 0x01,
     Data = 0x02,
@@ -50,21 +54,29 @@ impl From<DfuError> for Error {
     }
 }
 
-pub trait DfuRequest: Sized + Into<Vec<u8>> {
+pub(crate) fn dfu_write_impl<T: SlipEncoder>(
+    encoder: &mut T,
+    opcode: u8,
+    data: &[u8],
+) -> Result<(), Error> {
+    let mut request_data = vec![opcode];
+    request_data.extend_from_slice(data);
+    encoder.slip_write(&request_data)?;
+    Ok(())
+}
+
+pub trait DfuRequest<'de>: Sized + Serialize {
     const OPCODE: u8;
-    type Response: DfuResponse;
+    type Response: DfuResponse<'de>;
 
     fn dfu_write<T: SlipEncoder>(self, encoder: &mut T) -> Result<(), Error> {
-        let mut request_data = vec![Self::OPCODE];
-        request_data.extend(self.into());
-        encoder.slip_write(&request_data)?;
-        Ok(())
+        dfu_write_impl(encoder, Self::OPCODE, &bincode::serialize(&self).unwrap())
     }
 }
 
-pub trait DfuResponse: Sized + From<Vec<u8>> {
-    fn dfu_read<T: SlipEncoder, R: DfuRequest>(encoder: &mut T) -> Result<Self, Error> {
-        let mut response = encoder.slip_read()?;
+pub trait DfuResponse<'de>: Sized + DeserializeOwned {
+    fn dfu_read<T: SlipEncoder, R: DfuRequest<'de>>(encoder: &mut T) -> Result<Self, Error> {
+        let response = encoder.slip_read()?;
 
         assert!(response.len() >= 2);
 
@@ -74,14 +86,12 @@ pub trait DfuResponse: Sized + From<Vec<u8>> {
         if response[1] != 1 {
             Err(Error::DfuError(DfuError::from(response[1])))
         } else {
-            response.remove(0);
-            response.remove(0);
-            Ok(From::from(response))
+            Ok(bincode::deserialize(&response[2..]).unwrap())
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Deserialize, Debug)]
 pub struct NoResponse;
 
 impl From<Vec<u8>> for NoResponse {
@@ -90,13 +100,13 @@ impl From<Vec<u8>> for NoResponse {
     }
 }
 
-impl DfuResponse for NoResponse {
-    fn dfu_read<T: SlipEncoder, R: DfuRequest>(_encoder: &mut T) -> Result<Self, Error> {
+impl<'de> DfuResponse<'de> for NoResponse {
+    fn dfu_read<T: SlipEncoder, R: DfuRequest<'de>>(_encoder: &mut T) -> Result<Self, Error> {
         Ok(NoResponse)
     }
 }
 
-#[derive(Debug)]
+#[derive(Deserialize, Debug)]
 pub struct NoDataResponse;
 
 impl From<Vec<u8>> for NoDataResponse {
@@ -105,4 +115,4 @@ impl From<Vec<u8>> for NoDataResponse {
     }
 }
 
-impl DfuResponse for NoDataResponse {}
+impl DfuResponse<'_> for NoDataResponse {}

@@ -1,6 +1,6 @@
 [package]
 name = "nrf_dfu"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Robby Madruga <robbymadruga@gmail.com>"]
 edition = "2018"
 
@@ -10,4 +10,6 @@ edition = "2018"
 zip = "0.5.9"
 serde = { version = "1.0.118", features = ["derive"] }
 serde_json = "1.0.60"
+serde_repr = "0.1"
+bincode = "1.3.1"
 crc = "1.8.1"

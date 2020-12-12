@@ -29,7 +29,7 @@ impl<'a, T: Read + Write> Updater<'a, T> {
         }
     }
 
-    fn request<R: DfuRequest>(&mut self, request: R) -> Result<R::Response, Error> {
+    fn request<'de, R: DfuRequest<'de>>(&mut self, request: R) -> Result<R::Response, Error> {
         request.dfu_write(&mut self.comm)?;
         let response = R::Response::dfu_read::<_, R>(&mut self.comm)?;
         Ok(response)
