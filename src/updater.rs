@@ -64,19 +64,16 @@ impl<'a, T: Read + Write> Updater<'a, T> {
                 object_end = data.len();
             }
 
-            let object_size = usize::min(data[object_offset..object_end].len(), object_max_size);
-
             if (object_offset % object_max_size) == 0
                 || object_crc != crc32::checksum_ieee(&data[0..object_offset])
             {
                 self.request(ObjectCreateRequest {
                     object_type,
-                    object_size: object_size as u32,
+                    object_size: (object_end - object_offset) as u32,
                 })?;
             }
 
-            let data_chunks =
-                data[object_offset..(object_offset + object_size)].chunks(self.chunk_size);
+            let data_chunks = data[object_offset..object_end].chunks(self.chunk_size);
 
             let mut prn_count = 0;
 
@@ -110,7 +107,7 @@ impl<'a, T: Read + Write> Updater<'a, T> {
         Ok(())
     }
 
-    pub fn update(&mut self, firmware: FirmwareArchive) -> Result<(), Error> {
+    pub fn update(&mut self, firmware: &FirmwareArchive) -> Result<(), Error> {
         let PingResponse { id } = self.request(PingRequest { id: 0x7F })?;
         if id != 0x7F {
             return Err(Error::PingMismatch);
