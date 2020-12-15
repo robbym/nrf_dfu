@@ -35,7 +35,33 @@ impl<'a, T: Read + Write> Updater<'a, T> {
         Ok(response)
     }
 
-    fn write_object(&mut self, object_type: ObjectType, data: &[u8]) -> Result<(), Error> {
+    fn write_object(&mut self, mut object_crc: u32, data: &[u8]) -> Result<u32, Error> {
+        let mut prn_count = 0;
+
+        for chunk in data.chunks(self.chunk_size) {
+            object_crc = crc32::update(object_crc, &crc32::IEEE_TABLE, chunk);
+
+            if self.prn > 0 {
+                if prn_count < self.prn - 1 {
+                    prn_count += 1;
+                    self.request(ObjectWriteRequest::<NoResponse>::new(chunk))?;
+                } else {
+                    prn_count = 0;
+                    let ObjectWriteResponse { offset: _, crc } =
+                        self.request(ObjectWriteRequest::<ObjectWriteResponse>::new(chunk))?;
+                    if crc != object_crc {
+                        return Err(Error::CrcMismatch);
+                    }
+                }
+            } else {
+                self.request(ObjectWriteRequest::<NoResponse>::new(chunk))?;
+            }
+        }
+
+        Ok(object_crc)
+    }
+
+    fn transfer_object(&mut self, object_type: ObjectType, data: &[u8]) -> Result<(), Error> {
         let ObjectSelectResponse {
             max_size,
             offset,
@@ -73,29 +99,7 @@ impl<'a, T: Read + Write> Updater<'a, T> {
                 })?;
             }
 
-            let data_chunks = data[object_offset..object_end].chunks(self.chunk_size);
-
-            let mut prn_count = 0;
-
-            for data_chunk in data_chunks {
-                object_crc = crc32::update(object_crc, &crc32::IEEE_TABLE, data_chunk);
-
-                if self.prn > 0 {
-                    if prn_count < self.prn - 1 {
-                        prn_count += 1;
-                        self.request(ObjectWriteRequest::<NoResponse>::new(data_chunk))?;
-                    } else {
-                        prn_count = 0;
-                        let ObjectWriteResponse { offset: _, crc } = self
-                            .request(ObjectWriteRequest::<ObjectWriteResponse>::new(data_chunk))?;
-                        if crc != object_crc {
-                            return Err(Error::CrcMismatch);
-                        }
-                    }
-                } else {
-                    self.request(ObjectWriteRequest::<NoResponse>::new(data_chunk))?;
-                }
-            }
+            object_crc = self.write_object(object_crc, &data[object_offset..object_end])?;
 
             let GetCrcResponse { offset, crc } = self.request(GetCrcRequest)?;
             object_offset = offset as usize;
@@ -118,9 +122,9 @@ impl<'a, T: Read + Write> Updater<'a, T> {
         let GetMtuResponse { mtu } = self.request(GetMtuRequest)?;
         self.chunk_size = ((mtu / 2) - 1) as usize;
 
-        self.write_object(ObjectType::Command, firmware.dat.as_slice())?;
+        self.transfer_object(ObjectType::Command, firmware.dat.as_slice())?;
 
-        self.write_object(ObjectType::Data, firmware.bin.as_slice())?;
+        self.transfer_object(ObjectType::Data, firmware.bin.as_slice())?;
 
         self.request(AbortRequest)?;
 

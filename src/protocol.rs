@@ -210,12 +210,6 @@ impl DfuResponse<'_> for GetFirmwareVersionResponse {}
 #[derive(Serialize)]
 pub struct AbortRequest;
 
-impl Into<Vec<u8>> for AbortRequest {
-    fn into(self: Self) -> Vec<u8> {
-        vec![]
-    }
-}
-
 impl DfuRequest<'_> for AbortRequest {
     const OPCODE: u8 = 0x0C;
     type Response = NoResponse;
