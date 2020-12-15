@@ -1,15 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dfu::{self, DfuRequest, DfuResponse, NoDataResponse, NoResponse, ObjectType};
-use crate::slip::SlipEncoder;
-use crate::updater::Error;
+use crate::dfu::{DfuRequest, DfuResponse, DfuSerialize, NoDataResponse, NoResponse, ObjectType};
 
 // NRF_DFU_OP_PROTOCOL_VERSION
 #[derive(Serialize)]
 pub struct ProtocolVersionRequest;
 
 impl DfuRequest<'_> for ProtocolVersionRequest {
-    const OPCODE: u8 = 0x00;
+    const REQUEST_OPCODE: u8 = 0x00;
     type Response = ProtocolVersionResponse;
 }
 
@@ -28,7 +26,7 @@ pub struct ObjectCreateRequest {
 }
 
 impl DfuRequest<'_> for ObjectCreateRequest {
-    const OPCODE: u8 = 0x01;
+    const REQUEST_OPCODE: u8 = 0x01;
     type Response = NoDataResponse;
 }
 
@@ -39,7 +37,7 @@ pub struct SetReceiptNotifyRequest {
 }
 
 impl DfuRequest<'_> for SetReceiptNotifyRequest {
-    const OPCODE: u8 = 0x02;
+    const REQUEST_OPCODE: u8 = 0x02;
     type Response = NoDataResponse;
 }
 
@@ -48,7 +46,7 @@ impl DfuRequest<'_> for SetReceiptNotifyRequest {
 pub struct GetCrcRequest;
 
 impl DfuRequest<'_> for GetCrcRequest {
-    const OPCODE: u8 = 0x03;
+    const REQUEST_OPCODE: u8 = 0x03;
     type Response = GetCrcResponse;
 }
 
@@ -65,7 +63,7 @@ impl DfuResponse<'_> for GetCrcResponse {}
 pub struct ObjectExecuteRequest;
 
 impl DfuRequest<'_> for ObjectExecuteRequest {
-    const OPCODE: u8 = 0x04;
+    const REQUEST_OPCODE: u8 = 0x04;
     type Response = NoDataResponse;
 }
 
@@ -76,7 +74,7 @@ pub struct ObjectSelectRequest {
 }
 
 impl DfuRequest<'_> for ObjectSelectRequest {
-    const OPCODE: u8 = 0x06;
+    const REQUEST_OPCODE: u8 = 0x06;
     type Response = ObjectSelectResponse;
 }
 
@@ -94,7 +92,7 @@ impl DfuResponse<'_> for ObjectSelectResponse {}
 pub struct GetMtuRequest;
 
 impl DfuRequest<'_> for GetMtuRequest {
-    const OPCODE: u8 = 0x07;
+    const REQUEST_OPCODE: u8 = 0x07;
     type Response = GetMtuResponse;
 }
 
@@ -106,28 +104,26 @@ pub struct GetMtuResponse {
 impl DfuResponse<'_> for GetMtuResponse {}
 
 // NRF_DFU_OP_OBJECT_WRITE
-#[derive(Serialize)]
 pub struct ObjectWriteRequest<'de, T: DfuResponse<'de> = ObjectWriteResponse> {
     pub data: Vec<u8>,
     phantom: std::marker::PhantomData<&'de T>,
 }
 
-impl<'de> DfuRequest<'de> for ObjectWriteRequest<'de, ObjectWriteResponse> {
-    const OPCODE: u8 = 0x03;
-    type Response = ObjectWriteResponse;
-
-    fn dfu_write<T: SlipEncoder>(self, encoder: &mut T) -> Result<(), Error> {
-        dfu::dfu_write_impl(encoder, 0x08, &self.data)
+impl<'de, T: DfuResponse<'de>> DfuSerialize for ObjectWriteRequest<'de, T> {
+    fn serialize(self) -> Vec<u8> {
+        self.data
     }
 }
 
-impl<'de> DfuRequest<'de> for ObjectWriteRequest<'de, NoResponse> {
-    const OPCODE: u8 = 0x08;
-    type Response = NoResponse;
+impl<'de> DfuRequest<'de> for ObjectWriteRequest<'de, ObjectWriteResponse> {
+    const REQUEST_OPCODE: u8 = 0x08;
+    const RESPONSE_OPCODE: u8 = 0x03;
+    type Response = ObjectWriteResponse;
+}
 
-    fn dfu_write<T: SlipEncoder>(self, encoder: &mut T) -> Result<(), Error> {
-        dfu::dfu_write_impl(encoder, 0x08, &self.data)
-    }
+impl<'de> DfuRequest<'de> for ObjectWriteRequest<'de, NoResponse> {
+    const REQUEST_OPCODE: u8 = 0x08;
+    type Response = NoResponse;
 }
 
 impl<'de, T: DfuResponse<'de>> ObjectWriteRequest<'de, T> {
@@ -154,7 +150,7 @@ pub struct PingRequest {
 }
 
 impl DfuRequest<'_> for PingRequest {
-    const OPCODE: u8 = 0x09;
+    const REQUEST_OPCODE: u8 = 0x09;
     type Response = PingResponse;
 }
 
@@ -170,7 +166,7 @@ impl DfuResponse<'_> for PingResponse {}
 pub struct GetHardwareVersionRequest;
 
 impl DfuRequest<'_> for GetHardwareVersionRequest {
-    const OPCODE: u8 = 0x0A;
+    const REQUEST_OPCODE: u8 = 0x0A;
     type Response = GetHardwareVersionResponse;
 }
 
@@ -192,7 +188,7 @@ pub struct GetFirmwareVersionRequest {
 }
 
 impl DfuRequest<'_> for GetFirmwareVersionRequest {
-    const OPCODE: u8 = 0x0B;
+    const REQUEST_OPCODE: u8 = 0x0B;
     type Response = GetFirmwareVersionResponse;
 }
 
@@ -211,6 +207,6 @@ impl DfuResponse<'_> for GetFirmwareVersionResponse {}
 pub struct AbortRequest;
 
 impl DfuRequest<'_> for AbortRequest {
-    const OPCODE: u8 = 0x0C;
+    const REQUEST_OPCODE: u8 = 0x0C;
     type Response = NoResponse;
 }

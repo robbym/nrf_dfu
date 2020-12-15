@@ -54,23 +54,26 @@ impl From<DfuError> for Error {
     }
 }
 
-pub(crate) fn dfu_write_impl<T: SlipEncoder>(
-    encoder: &mut T,
-    opcode: u8,
-    data: &[u8],
-) -> Result<(), Error> {
-    let mut request_data = vec![opcode];
-    request_data.extend_from_slice(data);
-    encoder.slip_write(&request_data)?;
-    Ok(())
+pub trait DfuSerialize {
+    fn serialize(self) -> Vec<u8>;
 }
 
-pub trait DfuRequest<'de>: Sized + Serialize {
-    const OPCODE: u8;
+impl<T: Serialize> DfuSerialize for T {
+    fn serialize(self) -> Vec<u8> {
+        bincode::serialize(&self).unwrap()
+    }
+}
+
+pub trait DfuRequest<'de>: Sized + DfuSerialize {
+    const REQUEST_OPCODE: u8;
+    const RESPONSE_OPCODE: u8 = Self::REQUEST_OPCODE;
     type Response: DfuResponse<'de>;
 
     fn dfu_write<T: SlipEncoder>(self, encoder: &mut T) -> Result<(), Error> {
-        dfu_write_impl(encoder, Self::OPCODE, &bincode::serialize(&self).unwrap())
+        let mut request_data = vec![Self::REQUEST_OPCODE];
+        request_data.extend_from_slice(&self.serialize());
+        encoder.slip_write(&request_data)?;
+        Ok(())
     }
 }
 
@@ -80,7 +83,7 @@ pub trait DfuResponse<'de>: Sized + DeserializeOwned {
 
         assert!(response.len() >= 2);
 
-        if response[0] != R::OPCODE {
+        if response[0] != R::RESPONSE_OPCODE {
             return Err(Error::DfuError(DfuError::InvalidOpcode));
         }
         if response[1] != 1 {
@@ -94,12 +97,6 @@ pub trait DfuResponse<'de>: Sized + DeserializeOwned {
 #[derive(Deserialize, Debug)]
 pub struct NoResponse;
 
-impl From<Vec<u8>> for NoResponse {
-    fn from(_data: Vec<u8>) -> Self {
-        NoResponse
-    }
-}
-
 impl<'de> DfuResponse<'de> for NoResponse {
     fn dfu_read<T: SlipEncoder, R: DfuRequest<'de>>(_encoder: &mut T) -> Result<Self, Error> {
         Ok(NoResponse)
@@ -108,11 +105,5 @@ impl<'de> DfuResponse<'de> for NoResponse {
 
 #[derive(Deserialize, Debug)]
 pub struct NoDataResponse;
-
-impl From<Vec<u8>> for NoDataResponse {
-    fn from(_data: Vec<u8>) -> Self {
-        NoDataResponse
-    }
-}
 
 impl DfuResponse<'_> for NoDataResponse {}
