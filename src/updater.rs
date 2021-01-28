@@ -126,8 +126,6 @@ impl<'a, T: Read + Write> Updater<'a, T> {
 
         self.transfer_object(ObjectType::Data, firmware.bin.as_slice())?;
 
-        self.request(AbortRequest)?;
-
         Ok(())
     }
 }
