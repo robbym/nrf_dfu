@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use crc::crc32;
 
-use crate::archive::FirmwareArchive;
+use crate::archive::{FirmwareArchive, FirmwareData};
 use crate::dfu::{DfuError, DfuRequest, DfuResponse, NoResponse, ObjectType};
 use crate::protocol::*;
 
@@ -111,7 +111,7 @@ impl<'a, T: Read + Write> Updater<'a, T> {
         Ok(())
     }
 
-    pub fn update(&mut self, firmware: &FirmwareArchive) -> Result<(), Error> {
+    fn update_module(&mut self, firmware: &FirmwareData) -> Result<(), Error> {
         let PingResponse { id } = self.request(PingRequest { id: 0x7F })?;
         if id != 0x7F {
             return Err(Error::PingMismatch);
@@ -125,6 +125,18 @@ impl<'a, T: Read + Write> Updater<'a, T> {
         self.transfer_object(ObjectType::Command, firmware.dat.as_slice())?;
 
         self.transfer_object(ObjectType::Data, firmware.bin.as_slice())?;
+
+        Ok(())
+    }
+
+    pub fn update(&mut self, firmware: &FirmwareArchive) -> Result<(), Error> {
+        if let Some(bootloader) = &firmware.bootloader {
+            self.update_module(&bootloader)?;
+        }
+
+        if let Some(application) = &firmware.application {
+            self.update_module(&application)?;
+        }
 
         Ok(())
     }

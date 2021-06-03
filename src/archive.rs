@@ -6,14 +6,15 @@ use zip::read::ZipArchive;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Application {
+struct Firmware {
     bin_file: String,
     dat_file: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ManifestField {
-    application: Application,
+    bootloader: Option<Firmware>,
+    application: Option<Firmware>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -21,9 +22,14 @@ struct Manifest {
     manifest: ManifestField,
 }
 
-pub struct FirmwareArchive {
+pub struct FirmwareData {
     pub bin: Vec<u8>,
     pub dat: Vec<u8>,
+}
+
+pub struct FirmwareArchive {
+    pub bootloader: Option<FirmwareData>,
+    pub application: Option<FirmwareData>,
 }
 
 impl FirmwareArchive {
@@ -39,22 +45,30 @@ impl FirmwareArchive {
         let Manifest {
             manifest:
                 ManifestField {
-                    application: Application { bin_file, dat_file },
+                    bootloader,
+                    application,
                 },
         } = serde_json::from_str(&manifest_data).unwrap();
 
-        let mut bin = vec![];
-        {
-            let mut bin_file = archive.by_name(&bin_file).unwrap();
-            bin_file.read_to_end(&mut bin).unwrap();
-        }
+        let mut extract_data = |Firmware { bin_file, dat_file }| {
+            let mut bin = vec![];
+            {
+                let mut bin_file = archive.by_name(&bin_file).unwrap();
+                bin_file.read_to_end(&mut bin).unwrap();
+            }
 
-        let mut dat = vec![];
-        {
-            let mut dat_file = archive.by_name(&dat_file).unwrap();
-            dat_file.read_to_end(&mut dat).unwrap();
-        }
+            let mut dat = vec![];
+            {
+                let mut dat_file = archive.by_name(&dat_file).unwrap();
+                dat_file.read_to_end(&mut dat).unwrap();
+            }
 
-        FirmwareArchive { bin, dat }
+            FirmwareData { bin, dat }
+        };
+
+        FirmwareArchive {
+            bootloader: bootloader.map(&mut extract_data),
+            application: application.map(&mut extract_data),
+        }
     }
 }
