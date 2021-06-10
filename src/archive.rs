@@ -14,6 +14,7 @@ struct Firmware {
 #[derive(Serialize, Deserialize, Debug)]
 struct ManifestField {
     bootloader: Option<Firmware>,
+    softdevice_bootloader: Option<Firmware>,
     application: Option<Firmware>,
 }
 
@@ -29,6 +30,7 @@ pub struct FirmwareData {
 
 pub struct FirmwareArchive {
     pub bootloader: Option<FirmwareData>,
+    pub softdevice_bootloader: Option<FirmwareData>,
     pub application: Option<FirmwareData>,
 }
 
@@ -46,6 +48,7 @@ impl FirmwareArchive {
             manifest:
                 ManifestField {
                     bootloader,
+                    softdevice_bootloader,
                     application,
                 },
         } = serde_json::from_str(&manifest_data).unwrap();
@@ -68,6 +71,7 @@ impl FirmwareArchive {
 
         FirmwareArchive {
             bootloader: bootloader.map(&mut extract_data),
+            softdevice_bootloader: softdevice_bootloader.map(&mut extract_data),
             application: application.map(&mut extract_data),
         }
     }

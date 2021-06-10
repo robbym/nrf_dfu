@@ -1,5 +1,8 @@
 use std::io::{Read, Write};
 
+use std::thread;
+use std::time::Duration;
+
 use crc::crc32;
 
 use crate::archive::{FirmwareArchive, FirmwareData};
@@ -14,14 +17,22 @@ pub enum Error {
     CrcMismatch,
 }
 
-pub struct Updater<'a, T: Read + Write> {
+pub enum ResetMode {
+    Bootloader,
+    Application,
+}
+
+pub trait NordicDevice: Read + Write {
+    fn reset(&mut self, mode: ResetMode);
+}
+
+pub struct Updater<'a, T: NordicDevice> {
     comm: &'a mut T,
     prn: u16,
     chunk_size: usize,
 }
 
-impl<'a, T: Read + Write> Updater<'a, T> {
-    pub fn new(comm: &'a mut T) -> Self {
+impl<'a, T: NordicDevice> Updater<'a, T> {
         Self {
             comm,
             prn: 5,
@@ -130,12 +141,28 @@ impl<'a, T: Read + Write> Updater<'a, T> {
     }
 
     pub fn update(&mut self, firmware: &FirmwareArchive) -> Result<(), Error> {
-        if let Some(bootloader) = &firmware.bootloader {
-            self.update_module(&bootloader)?;
+        if let Some(softdevice_bootloader) = &firmware.softdevice_bootloader {
+            if let Err(err) = self.update_module(&softdevice_bootloader) {
+                self.request(AbortRequest)?;
+                return Err(err);
+            }
+            thread::sleep(Duration::from_millis(1000));
+            self.comm.reset(ResetMode::Bootloader);
+        } else if let Some(bootloader) = &firmware.bootloader {
+            if let Err(err) = self.update_module(&bootloader) {
+                self.request(AbortRequest)?;
+                return Err(err);
+            }
+            thread::sleep(Duration::from_millis(500));
+            self.comm.reset(ResetMode::Bootloader);
         }
 
         if let Some(application) = &firmware.application {
-            self.update_module(&application)?;
+            if let Err(err) = self.update_module(&application) {
+                self.request(AbortRequest)?;
+                return Err(err);
+            }
+            thread::sleep(Duration::from_millis(500));
         }
 
         Ok(())
