@@ -30,13 +30,16 @@ pub struct Updater<'a, T: NordicDevice> {
     comm: &'a mut T,
     prn: u16,
     chunk_size: usize,
+    force: bool,
 }
 
 impl<'a, T: NordicDevice> Updater<'a, T> {
+    pub fn new(comm: &'a mut T, force: bool) -> Self {
         Self {
             comm,
             prn: 5,
             chunk_size: 0,
+            force
         }
     }
 
@@ -83,6 +86,11 @@ impl<'a, T: NordicDevice> Updater<'a, T> {
         let mut object_offset = offset as usize;
         let mut object_crc = crc;
         let firmware_crc = crc32::checksum_ieee(data);
+
+        if self.force {
+            object_offset = 0;
+            object_crc = 0;
+        }
 
         loop {
             if (object_offset > 0 && (object_offset % object_max_size) == 0)
