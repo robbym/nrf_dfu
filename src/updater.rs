@@ -1,11 +1,11 @@
-use std::io::{Read, Write};
-
 use std::thread;
 use std::time::Duration;
+use std::io::{Read, Write};
 
 use crc::crc32;
 
 use crate::archive::{FirmwareArchive, FirmwareData};
+use crate::codec::DfuCodec;
 use crate::dfu::{DfuError, DfuRequest, DfuResponse, NoResponse, ObjectType};
 use crate::protocol::*;
 
@@ -23,6 +23,7 @@ pub enum ResetMode {
 }
 
 pub trait NordicDevice: Read + Write {
+    type Codec: DfuCodec;
     fn reset(&mut self, mode: ResetMode);
 }
 
@@ -39,13 +40,13 @@ impl<'a, T: NordicDevice> Updater<'a, T> {
             comm,
             prn: 5,
             chunk_size: 0,
-            force
+            force,
         }
     }
 
-    fn request<'de, R: DfuRequest<'de>>(&mut self, request: R) -> Result<R::Response, Error> {
-        request.dfu_write(&mut self.comm)?;
-        let response = R::Response::dfu_read::<_, R>(&mut self.comm)?;
+    fn request<'de, Request: DfuRequest<'de>>(&mut self, request: Request) -> Result<Request::Response, Error> {
+        request.dfu_write::<T, T::Codec>(self.comm)?;
+        let response = Request::Response::dfu_read::<T, T::Codec, Request>(self.comm)?;
         Ok(response)
     }
 
@@ -131,15 +132,31 @@ impl<'a, T: NordicDevice> Updater<'a, T> {
     }
 
     fn update_module(&mut self, firmware: &FirmwareData) -> Result<(), Error> {
-        let PingResponse { id } = self.request(PingRequest { id: 0x7F })?;
-        if id != 0x7F {
-            return Err(Error::PingMismatch);
+        match self.request(PingRequest { id: 0x7F }) {
+            Ok(PingResponse { id }) => {
+                if id != 0x7F {
+                    return Err(Error::PingMismatch);
+                }
+            }
+            Err(Error::DfuError(DfuError::OpcodeNotSupported)) => {}
+            Err(err) => {
+                return Err(err);
+            }
         }
 
         self.request(SetReceiptNotifyRequest { target: self.prn })?;
 
-        let GetMtuResponse { mtu } = self.request(GetMtuRequest)?;
-        self.chunk_size = ((mtu / 2) - 1) as usize;
+        match self.request(GetMtuRequest) {
+            Ok(GetMtuResponse { mtu }) => {
+                self.chunk_size = ((mtu / 2) - 1) as usize;
+            }
+            Err(Error::DfuError(DfuError::OpcodeNotSupported)) => {
+                self.chunk_size = 223;
+            }
+            Err(err) => {
+                return Err(err);
+            }
+        }
 
         self.transfer_object(ObjectType::Command, firmware.dat.as_slice())?;
 
@@ -174,5 +191,14 @@ impl<'a, T: NordicDevice> Updater<'a, T> {
         }
 
         Ok(())
+    }
+    pub fn get_firmware_version(&mut self) -> Result<u32, Error> {
+        let GetFirmwareVersionResponse {
+            firmware_type: _,
+            version,
+            address: _,
+            length: _,
+        } = self.request(GetFirmwareVersionRequest { image: 2 })?;
+        return Ok(version);
     }
 }

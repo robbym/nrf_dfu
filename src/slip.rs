@@ -1,23 +1,27 @@
-use std::io::{Read, Write};
 use std::iter;
+use std::io::{Read, Write};
+
+use crate::codec::DfuCodec;
 
 const SLIP_END: u8 = 0xC0;
 const SLIP_ESC: u8 = 0xDB;
 const SLIP_ESC_END: [u8; 2] = [0xDB, 0xDC];
 const SLIP_ESC_ESC: [u8; 2] = [0xDB, 0xDD];
 
-pub trait SlipEncoder: Read + Write {
-    fn slip_read(&mut self) -> std::io::Result<Vec<u8>> {
+pub struct SlipCodec;
+
+impl DfuCodec for SlipCodec {
+    fn decoded_read<T: Read>(reader: &mut T) -> std::io::Result<Vec<u8>> {
         let mut data = vec![];
         let mut byte = [0u8; 1];
 
-        self.read_exact(&mut byte)?;
+        reader.read_exact(&mut byte)?;
         if byte[0] == 0x60 {
             loop {
-                self.read_exact(&mut byte)?;
+                reader.read_exact(&mut byte)?;
                 match byte[0] {
                     SLIP_ESC => {
-                        self.read_exact(&mut byte)?;
+                        reader.read_exact(&mut byte)?;
                         match byte[0] {
                             0xDC => data.push(SLIP_END),
                             0xDD => data.push(SLIP_ESC),
@@ -42,7 +46,7 @@ pub trait SlipEncoder: Read + Write {
         }
     }
 
-    fn slip_write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    fn encoded_write<T: Write>(writer: &mut T, buf: &[u8]) -> std::io::Result<usize> {
         let slip_frame = buf
             .iter()
             .flat_map(|x| match *x {
@@ -53,10 +57,8 @@ pub trait SlipEncoder: Read + Write {
             .chain(iter::once(SLIP_END))
             .collect::<Vec<_>>();
 
-        let size = self.write(&slip_frame)?;
-        self.flush()?;
+        let size = writer.write(&slip_frame)?;
+        writer.flush()?;
         Ok(size)
     }
 }
-
-impl<T> SlipEncoder for T where T: Read + Write {}

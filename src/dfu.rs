@@ -1,7 +1,9 @@
+use std::io::{Read, Write};
+
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_repr::*;
 
-use crate::slip::SlipEncoder;
+use crate::codec::DfuCodec;
 use crate::updater::Error;
 
 #[derive(Debug)]
@@ -69,21 +71,21 @@ pub trait DfuRequest<'de>: Sized + DfuSerialize {
     const RESPONSE_OPCODE: u8 = Self::REQUEST_OPCODE;
     type Response: DfuResponse<'de>;
 
-    fn dfu_write<T: SlipEncoder>(self, encoder: &mut T) -> Result<(), Error> {
+    fn dfu_write<Writer: Write, Codec: DfuCodec>(self, writer: &mut Writer) -> Result<(), Error> {
         let mut request_data = vec![Self::REQUEST_OPCODE];
         request_data.extend_from_slice(&self.serialize());
-        encoder.slip_write(&request_data)?;
+        Codec::encoded_write(writer, &request_data)?;
         Ok(())
     }
 }
 
 pub trait DfuResponse<'de>: Sized + DeserializeOwned {
-    fn dfu_read<T: SlipEncoder, R: DfuRequest<'de>>(encoder: &mut T) -> Result<Self, Error> {
-        let response = encoder.slip_read()?;
+    fn dfu_read<Reader: Read, Codec: DfuCodec, Request: DfuRequest<'de>>(reader: &mut Reader) -> Result<Self, Error> {
+        let response = Codec::decoded_read(reader)?;
 
         assert!(response.len() >= 2);
 
-        if response[0] != R::RESPONSE_OPCODE {
+        if response[0] != Request::RESPONSE_OPCODE {
             return Err(Error::DfuError(DfuError::InvalidOpcode));
         }
         if response[1] != 1 {
@@ -98,7 +100,7 @@ pub trait DfuResponse<'de>: Sized + DeserializeOwned {
 pub struct NoResponse;
 
 impl<'de> DfuResponse<'de> for NoResponse {
-    fn dfu_read<T: SlipEncoder, R: DfuRequest<'de>>(_encoder: &mut T) -> Result<Self, Error> {
+    fn dfu_read<Reader: Read, Codec: DfuCodec, Request: DfuRequest<'de>>(_reader: &mut Reader) -> Result<Self, Error> {
         Ok(NoResponse)
     }
 }

@@ -1,7 +1,8 @@
 pub mod archive;
 pub mod dfu;
 pub mod protocol;
-mod slip;
+pub mod codec;
+pub mod slip;
 pub mod updater;
 
 #[cfg(test)]
