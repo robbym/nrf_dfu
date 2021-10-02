@@ -38,7 +38,7 @@ impl<'a, T: NordicDevice> Updater<'a, T> {
     pub fn new(comm: &'a mut T, force: bool) -> Self {
         Self {
             comm,
-            prn: 5,
+            prn: 3,
             chunk_size: 0,
             force,
         }
@@ -151,7 +151,7 @@ impl<'a, T: NordicDevice> Updater<'a, T> {
                 self.chunk_size = ((mtu / 2) - 1) as usize;
             }
             Err(Error::DfuError(DfuError::OpcodeNotSupported)) => {
-                self.chunk_size = 223;
+                self.chunk_size = 244;
             }
             Err(err) => {
                 return Err(err);
