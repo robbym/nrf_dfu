@@ -3,8 +3,10 @@ name = "nrf_dfu"
 version = "2.0.1"
 authors = ["Robby Madruga <robbymadruga@gmail.com>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
+description = "A library to help build an nRF updater"
+repository = "https://github.com/robbym/nrf_dfu"
+keywords = ["nrf", "dfu", "nordic", "updater", "bootloader", "secure"]
 
 [dependencies]
 zip = "0.5.9"
